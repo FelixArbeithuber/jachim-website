@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+	<title>Schach</title>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<meta name="robots" content="noindex">
+
+	<link rel="shortcut icon" type="image/png" href="./imgs/favicon.png" />
+	<link rel="stylesheet" href="./common.css" />
+
+	<script src="https://code.jquery.com/jquery-3.5.1.min.js"
+		integrity="sha256-9/aliU8dGd2tb6OSsuzixeV4y/faTqgFtohetphbbj0=" crossorigin="anonymous"></script>
+
+	<link rel="stylesheet" href="./chess/chessboard/css/chessboard-1.0.0.css" />
+	<script src="chess/chessboard/js/chessboard-1.0.0.js"></script>
+
+	<script src="chess/chess.js"></script>
+</head>
+
+<body>
+	<a href="./index.html"><img src="./imgs/logo_chess.png" class="logo" title="Go to Home"></a>
+
+	<h1>Schach</h1>
+
+	<hr>
+
+	<div id="body">
+		<div class="background-white">
+			<div id="auth" style="text-align:center">
+				<form action="javascript:void(0);">
+					<input type="text" id="user" placeholder="Name">
+					<br><br>
+					<button onclick="login()">Login</button>
+				</form>
+			</div>
+
+			<div id="controls" style="display:none">
+				<div><b>User: <span id="username"><span></b></div>
+				<br>
+				<button onclick="loadGame()">Load Game</button>
+				<br><br>
+				<button onclick="saveGame()">Save Game</button>
+				<br><br>
+				<button onclick="resetGame()">Reset Game</button>
+			</div>
+		</div>
+
+		<div class="background-grey">
+			<div style="text-align:center">
+				<label><b>Status:</b></label>
+				<div id="status">&nbsp; - &nbsp;</div>
+				<br>
+				<button onclick="undo()">Zug rückgängig machen</button>
+			</div>
+			<br>
+			<div id="board" style="max-width: 70vh; margin: auto;"></div>
+			<br>
+		</div>
+
+		<div class="background-white">
+			<textarea id="comment"
+				style="display:block; width: 70vw; height: 200px; margin: auto;">Falls du mir eine kleine Nachricht zum Schachspiel senden möchtest, einfach hier eingeben bevor du auf 'Save Game' drückst</textarea>
+		</div>
+	</div>
+
+	<footer>
+		<p id="footer">Hans Jachim | <a id="mailto" href="mailto:hansjachim@yahoo.de">hansjachim@yahoo.de</a></p>
+	</footer>
+
+	<script>
+		var board = null;
+		var game = new Chess();
+		var $status = $('#status');
+
+		var auth = null;
+		var jsonBlobURL = "https://jsonblob.com/api/jsonBlob/d48c3af3-a381-11ea-8892-352e95d65b1a";
+		var currLoad = null;
+		var white = null;
+		var black = null;
+		var moveDone = false;
+
+		function login() {
+			auth = document.getElementById('user').value;
+			document.getElementById('username').innerHTML = auth;
+			document.getElementById('controls').setAttribute("style", "text-align:center");
+			document.getElementById('auth').setAttribute("style", "display:none");
+		}
+
+		function loadGame() {
+			if (window.confirm("Willst du wirklich das Spiel laden?")) {
+				fetch(jsonBlobURL)
+					.then(response => response.json())
+					.then(data => {
+						if (game.load(data.fen)) {
+							moveDone = false;
+							currLoad = data.fen;
+
+							white = data.white;
+							black = data.black;
+							board.position(data.fen);
+							if (board.orientation() === 'white' && auth === black) {
+								board.flip();
+							} else if (board.orientation() === 'black' && auth === white) {
+								board.flip();
+							}
+							updateStatus();
+						}
+
+						document.getElementById('comment').value = data.comment;
+					});
+			}
+		}
+
+		function saveGame() {
+			if (window.confirm("Willst du wirklich das Spiel speichern?")) {
+				var body = { comment: document.getElementById('comment').value, fen: game.fen(), white: white, black: black };
+				fetch(jsonBlobURL, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+					.then(response => response.ok ? window.alert("Spiel gespeichert!") : window.alert("Fehler beim Speichern des Spiels!"));
+			}
+		}
+
+		function resetGame() {
+			if (window.confirm("Willst du wirklich das Spiel zurücksetzen?")) {
+				let tmp = window.prompt("Wie heißt dein Gegner?:");
+				if (tmp !== null) {
+					board.position('start');
+					if (board.orientation() === 'black') board.flip();
+					game.reset();
+					white = auth;
+					black = tmp;
+					currLoad = game.fen();
+					moveDone = false;
+					updateStatus();
+				}
+			}
+		}
+
+		function undo() {
+			if (currLoad !== null && game.load(currLoad)) {
+				board.position(currLoad);
+				moveDone = false;
+				updateStatus();
+			} else {
+				window.alert("Zug konnte nicht rückgängig gemacht werden!");
+			}
+		}
+
+
+		// ---------------------------------------------
+		// code below is from chessboardjs.com example
+
+		function onDragStart(source, piece, position, orientation) {
+			// only one move allowed per person
+			if (moveDone === true) return false;
+
+			// only pick p pieces if the current person has the right color
+			if (game.turn() === 'w' && auth !== white) {
+				return false;
+			} else if (game.turn() === 'b' && auth !== black) {
+				return false;
+			}
+
+			// do not pick up pieces if the game is over
+			if (game.game_over()) return false;
+
+			// only pick up pieces for the side to move
+			if ((game.turn() === 'w' && piece.search(/^b/) !== -1) ||
+				(game.turn() === 'b' && piece.search(/^w/) !== -1)) {
+				return false;
+			}
+		}
+
+		function onDrop(source, target) {
+			// see if the move is legal
+			var move = game.move({
+				from: source,
+				to: target,
+				promotion: 'q' // NOTE: always promote to a queen for example simplicity
+			})
+
+			// illegal move
+			if (move === null) return 'snapback'
+
+			updateStatus()
+		}
+
+		// update the board position after the piece snap
+		// for castling, en passant, pawn promotion
+		function onSnapEnd() {
+			board.position(game.fen());
+			moveDone = true;
+		}
+
+		function updateStatus() {
+			var status = '';
+
+			var moveColor = 'White (' + white + ')';
+			if (game.turn() === 'b') {
+				moveColor = 'Black (' + black + ')';
+			}
+
+			// checkmate?
+			if (game.in_checkmate()) {
+				status = 'Game over, ' + moveColor + ' is in checkmate.';
+			}
+
+			// draw?
+			else if (game.in_draw()) {
+				status = 'Game over, drawn position';
+			}
+
+			// game still on
+			else {
+				status = moveColor + ' to move';
+
+				// check?
+				if (game.in_check()) {
+					status += ', ' + moveColor + ' is in check';
+				}
+			}
+
+			$status.html(status);
+		}
+
+		var config = {
+			draggable: true,
+			onDragStart: onDragStart,
+			onDrop: onDrop,
+			onSnapEnd: onSnapEnd
+		}
+		board = Chessboard('board', config);
+		$(window).resize(board.resize);
+	</script>
+</body>
+
+</html>
